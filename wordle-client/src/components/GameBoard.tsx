@@ -1,23 +1,19 @@
 import React from 'react';
-import { evaluateGuess } from '../gameLogic';
+import { GameBoardProps } from '../types';
 
-interface GameBoardProps {
-    guesses: string[];
-    currentGuess: string;
-    answer: string;
-    maxRounds: number;
-  }
-
-const GameBoard: React.FC<GameBoardProps> = ({ guesses, currentGuess, answer, maxRounds }) => {
+const GameBoard: React.FC<GameBoardProps> = ({ guesses, evaluations, currentGuess, maxRounds }) => {
   const renderTile = (letter: string, index: number, rowIndex: number): JSX.Element => {
     let className = 'tile';
     
     if (letter) {
       className += ' filled';
       
-      if (rowIndex < guesses.length) {
-        const evaluation = evaluateGuess(guesses[rowIndex], answer);
-        className += ` ${evaluation[index]}`;
+      // Use server evaluation data to color the tiles
+      if (rowIndex < evaluations.length && evaluations[rowIndex]) {
+        const evaluation = evaluations[rowIndex][index];
+        if (evaluation) {
+          className += ` ${evaluation}`;
+        }
       }
     }
     
@@ -37,11 +33,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ guesses, currentGuess, answer, ma
       letters = currentGuess;
     }
     
-    letters = letters.padEnd(5, '');
+    const paddedLetters = letters.padEnd(5, '');
     
     return (
       <div key={rowIndex} className="row">
-        {letters.split('').map((letter, index) => 
+        {paddedLetters.split('').map((letter, index) => 
           renderTile(letter, index, rowIndex)
         )}
       </div>

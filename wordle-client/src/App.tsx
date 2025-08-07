@@ -1,88 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { GAME_CONFIG, getRandomWord } from './config';
-import { evaluateGuess, isGameWon, isGameLost, getKeyboardState } from './gameLogic';
-import { validateWord } from './wordValidation';
-import { GameStatus } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { GameStatus, KeyboardStatus } from './types';
+import { startNewGame, submitGuess } from './api';
 import GameBoard from './components/GameBoard';
 import Keyboard from './components/Keyboard';
 import GameStatusComponent from './components/GameStatus';
 
 function App(): JSX.Element {
-  const [answer, setAnswer] = useState<string>('');
+  const [gameId, setGameId] = useState<string>('');
   const [guesses, setGuesses] = useState<string[]>([]);
+  const [evaluations, setEvaluations] = useState<string[][]>([]);
   const [currentGuess, setCurrentGuess] = useState<string>('');
   const [gameStatus, setGameStatus] = useState<GameStatus>('playing');
   const [message, setMessage] = useState<string>('');
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [maxRounds, setMaxRounds] = useState<number>(6);
 
   useEffect(() => {
-    startNewGame();
+    initializeGame();
   }, []);
 
-  const startNewGame = async (): Promise<void> => {
+  const initializeGame = async (): Promise<void> => {
     setIsLoading(true);
+    setMessage('');
+    
     try {
-      const randomWord = await getRandomWord();
-      setAnswer(randomWord);
+      const { gameId: newGameId, maxRounds: rounds } = await startNewGame();
+      setGameId(newGameId);
+      setMaxRounds(rounds);
       setGuesses([]);
+      setEvaluations([]);
       setCurrentGuess('');
       setGameStatus('playing');
-      setMessage('');
     } catch (error) {
-      console.error('Failed to start new game:', error);
+      console.error('Failed to start game:', error);
       setMessage('Error starting game. Please refresh.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (key: string): void => {
+  const handleKeyPress = useCallback((key: string): void => {
     if (gameStatus !== 'playing' || isValidating || isLoading) return;
 
     if (key === 'ENTER') {
-      submitGuess();
+      submitGuessToServer();
     } else if (key === 'BACKSPACE') {
       setCurrentGuess(prev => prev.slice(0, -1));
     } else if (currentGuess.length < 5) {
       setCurrentGuess(prev => prev + key);
     }
-  };
+  }, [gameStatus, isValidating, isLoading, currentGuess.length]);
 
-  const submitGuess = async (): Promise<void> => {
-    if (currentGuess.length !== 5) {
+  const submitGuessToServer = async (): Promise<void> => {
+    if (!gameId || currentGuess.length !== 5) {
       setMessage('Word must be 5 letters long');
       setTimeout(() => setMessage(''), 2000);
       return;
     }
 
     setIsValidating(true);
+    setMessage('');
     
     try {
-      const validationResult = await validateWord(currentGuess, GAME_CONFIG.WORDS, true);
+      const result = await submitGuess(gameId, currentGuess);
       
-      if (!validationResult.isValid) {
-        setMessage(validationResult.error || 'Not a valid word');
-        setTimeout(() => setMessage(''), 2000);
-        setIsValidating(false);
-        return;
-      }
-
-      const newGuesses = [...guesses, currentGuess];
-      setGuesses(newGuesses);
+      setGuesses(prev => [...prev, currentGuess]);
+      setEvaluations(prev => [...prev, result.evaluation]);
       setCurrentGuess('');
-
-      if (isGameWon(currentGuess, answer)) {
-        setGameStatus('won');
+      setGameStatus(result.gameStatus as GameStatus);
+      
+      if (result.gameStatus === 'won') {
         setMessage('Congratulations! You won!');
-      } else if (isGameLost(newGuesses.length, GAME_CONFIG.MAX_ROUNDS)) {
-        setGameStatus('lost');
-        setMessage(`Game over! The word was ${answer}`);
+      } else if (result.gameStatus === 'lost') {
+        setMessage(`Game over! The word was ${result.answer}`);
       }
     } catch (error) {
-      console.error('Validation error:', error);
-      setMessage('Error validating word. Please try again.');
-      setTimeout(() => setMessage(''), 2000);
+      console.error('Error submitting guess:', error);
+      if (error instanceof Error) {
+        setMessage(error.message);
+      } else {
+        setMessage('Error submitting guess');
+      }
+      setTimeout(() => setMessage(''), 3000);
     } finally {
       setIsValidating(false);
     }
@@ -103,9 +103,31 @@ function App(): JSX.Element {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentGuess, gameStatus, isValidating, isLoading]);
+  }, [handleKeyPress]);
 
-  const keyboardState = getKeyboardState(guesses, answer);
+  // Calculate keyboard state based on evaluations
+  const getKeyboardState = (): Record<string, KeyboardStatus> => {
+    const keyboardState: Record<string, KeyboardStatus> = {};
+    
+    guesses.forEach((guess, guessIndex) => {
+      const evaluation = evaluations[guessIndex];
+      if (evaluation) {
+        guess.split('').forEach((letter, letterIndex) => {
+          const status = evaluation[letterIndex] as KeyboardStatus;
+          
+          // Only update if the new status is "better" than the current one
+          // correct > present > absent
+          if (!keyboardState[letter] || 
+              (status === 'correct') ||
+              (status === 'present' && keyboardState[letter] === 'absent')) {
+            keyboardState[letter] = status;
+          }
+        });
+      }
+    });
+    
+    return keyboardState;
+  };
 
   if (isLoading) {
     return (
@@ -124,16 +146,16 @@ function App(): JSX.Element {
       
       <GameBoard 
         guesses={guesses}
+        evaluations={evaluations}
         currentGuess={currentGuess}
-        answer={answer}
-        maxRounds={GAME_CONFIG.MAX_ROUNDS}
+        maxRounds={maxRounds}
       />
       
       <GameStatusComponent 
         status={gameStatus}
         message={message}
-        answer={answer}
-        onNewGame={startNewGame}
+        answer=""
+        onNewGame={initializeGame}
       />
       
       {isValidating && (
@@ -144,7 +166,7 @@ function App(): JSX.Element {
       
       <Keyboard 
         onKeyPress={handleKeyPress}
-        keyboardState={keyboardState}
+        keyboardState={getKeyboardState()}
         disabled={gameStatus !== 'playing' || isValidating}
       />
     </div>

@@ -1,4 +1,4 @@
-import { TileStatus, KeyboardState } from './types';
+import { TileStatus, GameStatus } from './types';
 
 export const evaluateGuess = (guess: string, answer: string): TileStatus[] => {
   const result: TileStatus[] = [];
@@ -14,12 +14,12 @@ export const evaluateGuess = (guess: string, answer: string): TileStatus[] => {
     }
   }
   
-  const answerLetterCount: Record<string, number> = {};
+  const letterCount: Record<string, number> = {};
   
   for (let i = 0; i < 5; i++) {
     if (!usedPositions.has(i)) {
       const letter = answerArray[i];
-      answerLetterCount[letter] = (answerLetterCount[letter] || 0) + 1;
+      letterCount[letter] = (letterCount[letter] || 0) + 1;
     }
   }
   
@@ -30,9 +30,9 @@ export const evaluateGuess = (guess: string, answer: string): TileStatus[] => {
     
     const letter = guessArray[i];
     
-    if (answerLetterCount[letter] && answerLetterCount[letter] > 0) {
+    if (letterCount[letter] && letterCount[letter] > 0) {
       result[i] = 'present';
-      answerLetterCount[letter]--;
+      letterCount[letter]--;
     } else {
       result[i] = 'absent';
     }
@@ -49,22 +49,14 @@ export const isGameLost = (currentRound: number, maxRounds: number): boolean => 
   return currentRound >= maxRounds;
 };
 
-export const getKeyboardState = (guesses: string[], answer: string): KeyboardState => {
-  const keyboardState: KeyboardState = {};
+export const validateGuess = (guess: string): { isValid: boolean; error?: string } => {
+  if (!guess || guess.length !== 5) {
+    return { isValid: false, error: 'Guess must be exactly 5 letters long' };
+  }
   
-  guesses.forEach(guess => {
-    const evaluation = evaluateGuess(guess, answer);
-    
-    guess.split('').forEach((letter, index) => {
-      const status = evaluation[index];
-      
-      if (!keyboardState[letter] || 
-          (status === 'correct') ||
-          (status === 'present' && keyboardState[letter] === 'absent')) {
-        keyboardState[letter] = status;
-      }
-    });
-  });
+  if (!/^[A-Za-z]{5}$/.test(guess)) {
+    return { isValid: false, error: 'Guess must contain only letters' };
+  }
   
-  return keyboardState;
+  return { isValid: true };
 }; 

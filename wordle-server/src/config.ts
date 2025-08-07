@@ -1,8 +1,10 @@
-import { GameConfig } from "./types";
+import { GameConfig } from './types';
 
 export const GAME_CONFIG: GameConfig = {
   MAX_ROUNDS: 6,
-  WORDS: ["after", "beach", "cable", "photo", "usual", "watch"],
+  WORDS: [
+    'about', 'above', 'abuse', 'actor', 'acute',
+  ]
 };
 
 export const getRandomWord = (): string => {
@@ -12,4 +14,4 @@ export const getRandomWord = (): string => {
 
 export const isValidWord = (word: string): boolean => {
   return GAME_CONFIG.WORDS.includes(word.toLowerCase());
-};
+}; 
