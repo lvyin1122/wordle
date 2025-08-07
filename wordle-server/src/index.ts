@@ -3,7 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import gameRoutes from './routes/gameRoutes';
+import multiplayerRoutes from './routes/multiplayerRoutes';
 import { gameService } from './gameService';
+import { multiplayerService } from './multiplayerService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +37,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/game', gameRoutes);
+app.use('/api/multiplayer', multiplayerRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -47,9 +50,10 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Cleanup old games every hour
+// Cleanup old games and rooms every hour
 setInterval(() => {
   gameService.cleanupOldGames();
+  multiplayerService.cleanupOldRooms();
 }, 60 * 60 * 1000);
 
 // Start server
@@ -57,6 +61,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Wordle server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🎮 Game API: http://localhost:${PORT}/api/game`);
+  console.log(`👥 Multiplayer API: http://localhost:${PORT}/api/multiplayer`);
 });
 
 export default app; 
