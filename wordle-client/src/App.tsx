@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GameStatus, KeyboardStatus } from './types';
 import { startNewGame, submitGuess } from './api';
+import { socketService, GuessResult } from './socketService';
 import GameModeSelector from './components/GameModeSelector';
 import RoomManager from './components/RoomManager';
 import GameBoard from './components/GameBoard';
@@ -137,7 +138,7 @@ function App(): JSX.Element {
     }
   };
 
-  const submitMultiplayerGuess = async (): Promise<void> => {
+  const submitMultiplayerGuess = (): void => {
     if (!roomId || !playerId || currentGuess.length !== 5) {
       setMessage('Word must be 5 letters long');
       setTimeout(() => setMessage(''), 2000);
@@ -147,46 +148,47 @@ function App(): JSX.Element {
     setIsValidating(true);
     setMessage('');
     
-    try {
-      const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-      const response = await fetch(`${API_BASE}/multiplayer/room/${roomId}/guess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId, guess: currentGuess })
+    // Submit guess via Socket.IO
+    socketService.submitGuess(roomId, playerId, currentGuess);
+  };
+
+  // Socket event listeners for multiplayer
+  useEffect(() => {
+    if (mode === 'multiplayer-game') {
+      // Listen for guess results
+      socketService.onGuessResult((result: GuessResult) => {
+        setGuesses(prev => [...prev, currentGuess]);
+        setEvaluations(prev => [...prev, result.evaluation]);
+        setCurrentGuess('');
+        setGameStatus(result.gameStatus as GameStatus);
+        
+        if (result.gameStatus === 'won') {
+          setMessage('Congratulations! You won!');
+        } else if (result.gameStatus === 'lost') {
+          setMessage(`Game over! The word was ${result.answer}`);
+        }
+        
+        setIsValidating(false);
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to submit guess');
-      }
-      
-      setGuesses(prev => [...prev, currentGuess]);
-      setEvaluations(prev => [...prev, result.evaluation]);
-      setCurrentGuess('');
-      setGameStatus(result.gameStatus as GameStatus);
-      
-      if (result.gameStatus === 'won') {
-        setMessage('Congratulations! You won!');
-      } else if (result.gameStatus === 'lost') {
-        setMessage(`Game over! The word was ${result.answer}`);
-      }
-    } catch (error) {
-      console.error('Error submitting multiplayer guess:', error);
-      if (error instanceof Error) {
+      // Listen for errors
+      socketService.onError((error) => {
         setMessage(error.message);
-      } else {
-        setMessage('Error submitting guess');
-      }
-      setTimeout(() => setMessage(''), 3000);
-    } finally {
-      setIsValidating(false);
+        setTimeout(() => setMessage(''), 3000);
+        setIsValidating(false);
+      });
+
+      // Cleanup on unmount
+      return () => {
+        socketService.off('guess-result');
+        socketService.off('error');
+      };
     }
-  };
+  }, [mode, currentGuess]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const key = event.key?.toUpperCase() || '';
+      const key = event.key.toUpperCase();
       
       if (key === 'ENTER') {
         handleKeyPress('ENTER');

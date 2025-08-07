@@ -2,13 +2,19 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { createServer } from 'http';
 import gameRoutes from './routes/gameRoutes';
 import multiplayerRoutes from './routes/multiplayerRoutes';
 import { gameService } from './gameService';
 import { multiplayerService } from './multiplayerService';
+import { SocketService } from './socketService';
 
 const app = express();
+const server = createServer(app);
 const PORT = process.env.PORT || 3001;
+
+// Initialize Socket.IO service
+const socketService = new SocketService(server);
 
 // Security middleware
 app.use(helmet());
@@ -57,11 +63,12 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Wordle server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🎮 Game API: http://localhost:${PORT}/api/game`);
   console.log(`👥 Multiplayer API: http://localhost:${PORT}/api/multiplayer`);
+  console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
 });
 
 export default app; 

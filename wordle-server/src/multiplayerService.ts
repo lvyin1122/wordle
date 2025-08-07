@@ -61,22 +61,37 @@ class MultiplayerService {
   }
 
   setPlayerReady(roomId: string, playerId: string, isReady: boolean): MultiplayerRoom {
+    console.log(`setPlayerReady called: roomId=${roomId}, playerId=${playerId}, isReady=${isReady}`);
+    
     const room = this.rooms.get(roomId);
     if (!room) {
+      console.log(`Room not found: ${roomId}`);
       throw new Error('Room not found');
     }
 
+    console.log(`Room found:`, {
+      roomId: room.roomId,
+      status: room.status,
+      players: room.players.map(p => ({ id: p.id, name: p.name, isReady: p.isReady }))
+    });
+
     const player = room.players.find(p => p.id === playerId);
     if (!player) {
+      console.log(`Player not found: ${playerId}`);
+      console.log(`Available players:`, room.players.map(p => p.id));
       throw new Error('Player not found');
     }
 
+    console.log(`Player found:`, { id: player.id, name: player.name, currentReady: player.isReady });
     player.isReady = isReady;
+    console.log(`Player ready status updated to: ${player.isReady}`);
 
     // Check if all players are ready
     const allReady = room.players.every(p => p.isReady);
+    console.log(`All players ready: ${allReady}, player count: ${room.players.length}, max players: ${room.maxPlayers}`);
+    
     if (allReady && room.players.length === room.maxPlayers) {
-      room.status = 'ready';
+      console.log(`Starting multiplayer game for room ${roomId}`);
       this.startMultiplayerGame(room);
     }
 

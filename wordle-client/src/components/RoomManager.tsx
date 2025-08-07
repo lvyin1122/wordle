@@ -1,21 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { socketService, RoomInfo } from '../socketService';
 
 interface RoomManagerProps {
   onGameStart: (roomId: string, playerId: string, isHost: boolean) => void;
   onBack: () => void;
-}
-
-interface RoomInfo {
-  roomId: string;
-  status: string;
-  players: Array<{
-    id: string;
-    name: string;
-    isReady: boolean;
-    isHost: boolean;
-  }>;
-  playerId: string;
-  isHost: boolean;
 }
 
 const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
@@ -25,6 +13,7 @@ const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [playerId, setPlayerId] = useState('');
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -55,8 +44,13 @@ const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
         throw new Error(data.error || 'Failed to create room');
       }
 
+      // Use the server-generated player ID
+      setPlayerId(data.playerId);
       setRoomInfo(data);
       setMode('waiting');
+      
+      // Join the socket room with server-generated player ID
+      socketService.joinRoom(roomId, data.playerId, playerName);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to create room');
     } finally {
@@ -86,8 +80,13 @@ const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
         throw new Error(data.error || 'Failed to join room');
       }
 
+      // Use the server-generated player ID
+      setPlayerId(data.playerId);
       setRoomInfo(data);
       setMode('waiting');
+      
+      // Join the socket room with server-generated player ID
+      socketService.joinRoom(roomId, data.playerId, playerName);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to join room');
     } finally {
@@ -95,59 +94,57 @@ const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
     }
   };
 
-  const setReady = async (isReady: boolean) => {
-    if (!roomInfo) return;
+  const setReady = (isReady: boolean) => {
+    if (!roomInfo || !playerId) return;
 
-    try {
-      const response = await fetch(`${API_BASE}/multiplayer/room/${roomInfo.roomId}/ready`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: roomInfo.playerId, isReady })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to set ready status');
-      }
-
-      setRoomInfo(data);
-
-      // If game is ready, start the game
-      if (data.status === 'playing') {
-        onGameStart(data.roomId, roomInfo.playerId, roomInfo.isHost);
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to set ready status');
-    }
+    socketService.setReady(roomInfo.roomId, playerId, isReady);
   };
 
-  // Poll for room updates when waiting
+  const leaveRoom = () => {
+    if (roomInfo && playerId) {
+      socketService.leaveRoom(roomInfo.roomId, playerId);
+    }
+    onBack();
+  };
+
+  // Socket event listeners
   useEffect(() => {
-    if (mode !== 'waiting' || !roomInfo) return;
+    // Listen for room updates
+    socketService.onRoomUpdated((updatedRoomInfo) => {
+      setRoomInfo(updatedRoomInfo);
+    });
 
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_BASE}/multiplayer/room/${roomInfo.roomId}`);
-        const data = await response.json();
-
-        if (response.ok) {
-          setRoomInfo(prev => ({ ...prev!, ...data }));
-
-          // If game is ready, start the game
-          if (data.status === 'playing') {
-            onGameStart(data.roomId, roomInfo.playerId, roomInfo.isHost);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to update room status:', error);
+    // Listen for game start
+    socketService.onGameStart((data) => {
+      const currentPlayer = roomInfo?.players.find(p => p.id === playerId);
+      if (currentPlayer) {
+        onGameStart(data.roomId, playerId, currentPlayer.isHost);
       }
-    }, 2000);
+    });
 
-    return () => clearInterval(interval);
-  }, [mode, roomInfo, onGameStart]);
+    // Listen for errors
+    socketService.onError((error) => {
+      setError(error.message);
+    });
+
+    // Listen for room deletion
+    socketService.onRoomDeleted((data) => {
+      setError('Room was deleted by the host');
+      setTimeout(() => onBack(), 2000);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('room-updated');
+      socketService.off('game-start');
+      socketService.off('error');
+      socketService.off('room-deleted');
+    };
+  }, [roomInfo, playerId, onGameStart, onBack]);
 
   if (mode === 'waiting' && roomInfo) {
+    const currentPlayer = roomInfo.players.find(p => p.id === playerId);
+    
     return (
       <div className="room-manager">
         <h2>Room {roomInfo.roomId}</h2>
@@ -167,12 +164,12 @@ const RoomManager: React.FC<RoomManagerProps> = ({ onGameStart, onBack }) => {
           
           <div className="room-actions">
             <button 
-              className={`ready-btn ${roomInfo.players.find(p => p.id === roomInfo.playerId)?.isReady ? 'ready' : ''}`}
-              onClick={() => setReady(!roomInfo.players.find(p => p.id === roomInfo.playerId)?.isReady)}
+              className={`ready-btn ${currentPlayer?.isReady ? 'ready' : ''}`}
+              onClick={() => setReady(!currentPlayer?.isReady)}
             >
-              {roomInfo.players.find(p => p.id === roomInfo.playerId)?.isReady ? 'Not Ready' : 'Ready'}
+              {currentPlayer?.isReady ? 'Not Ready' : 'Ready'}
             </button>
-            <button className="back-btn" onClick={onBack}>
+            <button className="back-btn" onClick={leaveRoom}>
               Leave Room
             </button>
           </div>
