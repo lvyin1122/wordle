@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GameStatus, KeyboardStatus, PlayerState, AttackType } from './types';
+import { GameStatus, KeyboardStatus, PlayerState, AttackType, GameMode, HostCheatingGameState, CandidateWord } from './types';
 import { startNewGame, submitGuess } from './api';
 import { socketService, GuessResult, AttackResult } from './socketService';
+import { initializeCandidates, updateCandidates, selectAnswer, evaluateGuess, WORD_LIST } from './hostCheatingLogic';
 import GameModeSelector from './components/GameModeSelector';
 import RoomManager from './components/RoomManager';
 import GameBoard from './components/GameBoard';
 import Keyboard from './components/Keyboard';
 import GameStatusComponent from './components/GameStatus';
 import AttackSystem from './components/AttackSystem';
+import CandidateInfo from './components/CandidateInfo';
 
-type AppMode = 'mode-select' | 'single-player' | 'multiplayer-setup' | 'multiplayer-game';
+type AppMode = 'mode-select' | 'single-player' | 'multiplayer-setup' | 'multiplayer-game' | 'host-cheating';
 
 function App(): JSX.Element {
   // App state
@@ -38,6 +40,17 @@ function App(): JSX.Element {
   const [discoveredAbsent, setDiscoveredAbsent] = useState<Set<string>>(new Set());
   const [players, setPlayers] = useState<PlayerState[]>([]);
 
+  // Host cheating state
+  const [hostCheatingState, setHostCheatingState] = useState<HostCheatingGameState>({
+    candidates: [],
+    guesses: [],
+    evaluations: [],
+    currentGuess: '',
+    gameStatus: 'playing',
+    message: '',
+    maxRounds: 6
+  });
+
   const initializeSinglePlayer = async (): Promise<void> => {
     setIsLoading(true);
     setMessage('');
@@ -58,12 +71,28 @@ function App(): JSX.Element {
     }
   };
 
-  const handleModeSelect = (gameMode: 'single' | 'multiplayer') => {
+  const initializeHostCheating = (): void => {
+    const candidates = initializeCandidates();
+    setHostCheatingState({
+      candidates,
+      guesses: [],
+      evaluations: [],
+      currentGuess: '',
+      gameStatus: 'playing',
+      message: '',
+      maxRounds: 6
+    });
+  };
+
+  const handleModeSelect = (gameMode: GameMode) => {
     if (gameMode === 'single') {
       setMode('single-player');
       initializeSinglePlayer();
-    } else {
+    } else if (gameMode === 'multiplayer') {
       setMode('multiplayer-setup');
+    } else if (gameMode === 'host-cheating') {
+      setMode('host-cheating');
+      initializeHostCheating();
     }
   };
 
@@ -102,6 +131,15 @@ function App(): JSX.Element {
     setDiscoveredCorrect(new Set());
     setDiscoveredAbsent(new Set());
     setPlayers([]);
+    setHostCheatingState({
+      candidates: [],
+      guesses: [],
+      evaluations: [],
+      currentGuess: '',
+      gameStatus: 'playing',
+      message: '',
+      maxRounds: 6
+    });
   };
 
   const handleKeyPress = useCallback((key: string): void => {
@@ -112,13 +150,29 @@ function App(): JSX.Element {
         submitSinglePlayerGuess();
       } else if (mode === 'multiplayer-game') {
         submitMultiplayerGuess();
+      } else if (mode === 'host-cheating') {
+        submitHostCheatingGuess();
       }
     } else if (key === 'BACKSPACE') {
-      setCurrentGuess(prev => prev.slice(0, -1));
+      if (mode === 'host-cheating') {
+        setHostCheatingState(prev => ({
+          ...prev,
+          currentGuess: prev.currentGuess.slice(0, -1)
+        }));
+      } else {
+        setCurrentGuess(prev => prev.slice(0, -1));
+      }
+    } else if (mode === 'host-cheating') {
+      if (hostCheatingState.currentGuess.length < 5) {
+        setHostCheatingState(prev => ({
+          ...prev,
+          currentGuess: prev.currentGuess + key
+        }));
+      }
     } else if (currentGuess.length < 5) {
       setCurrentGuess(prev => prev + key);
     }
-  }, [gameStatus, isValidating, isLoading, currentGuess.length, mode]);
+  }, [gameStatus, isValidating, isLoading, currentGuess.length, mode, hostCheatingState.currentGuess.length]);
 
   const submitSinglePlayerGuess = async (): Promise<void> => {
     if (!gameId || currentGuess.length !== 5) {
@@ -154,6 +208,61 @@ function App(): JSX.Element {
     } finally {
       setIsValidating(false);
     }
+  };
+
+  const submitHostCheatingGuess = (): void => {
+    const { currentGuess: guess, candidates } = hostCheatingState;
+    
+    if (guess.length !== 5) {
+      setHostCheatingState(prev => ({
+        ...prev,
+        message: 'Word must be 5 letters long'
+      }));
+      setTimeout(() => {
+        setHostCheatingState(prev => ({ ...prev, message: '' }));
+      }, 2000);
+      return;
+    }
+
+    // Validate word is in our original word list
+    const isValidWord = WORD_LIST.includes(guess.toUpperCase());
+    if (!isValidWord) {
+      setHostCheatingState(prev => ({
+        ...prev,
+        message: 'Not a valid word'
+      }));
+      setTimeout(() => {
+        setHostCheatingState(prev => ({ ...prev, message: '' }));
+      }, 2000);
+      return;
+    }
+
+    // Select the answer from current candidates
+    const selectedAnswer = selectAnswer(candidates, guess.toUpperCase());
+    
+    // Evaluate the guess against the selected answer
+    const evaluation = evaluateGuess(guess.toUpperCase(), selectedAnswer);
+    
+    // Update candidates based on this guess
+    const updatedCandidates = updateCandidates(candidates, guess.toUpperCase(), evaluation);
+    
+    // Check if game is won
+    const isWon = guess.toUpperCase() === selectedAnswer;
+    const isLost = hostCheatingState.guesses.length >= hostCheatingState.maxRounds - 1;
+    
+    const newGameStatus: GameStatus = isWon ? 'won' : (isLost ? 'lost' : 'playing');
+    
+    setHostCheatingState(prev => ({
+      ...prev,
+      guesses: [...prev.guesses, guess.toUpperCase()],
+      evaluations: [...prev.evaluations, evaluation],
+      currentGuess: '',
+      candidates: updatedCandidates,
+      gameStatus: newGameStatus,
+      selectedAnswer: newGameStatus !== 'playing' ? selectedAnswer : undefined,
+      message: isWon ? `Congratulations! You won! The word was ${selectedAnswer}` :
+                isLost ? `Game over! The word was ${selectedAnswer}` : ''
+    }));
   };
 
   const submitMultiplayerGuess = (): void => {
@@ -212,6 +321,10 @@ function App(): JSX.Element {
     
     // Request new game from server
     socketService.restartGame(roomId, playerId);
+  };
+
+  const restartHostCheatingGame = (): void => {
+    initializeHostCheating();
   };
 
   // Socket event listeners for multiplayer
@@ -424,6 +537,28 @@ function App(): JSX.Element {
     return keyboardState;
   };
 
+  // Calculate keyboard state for host cheating mode
+  const getHostCheatingKeyboardState = (): Record<string, KeyboardStatus> => {
+    const keyboardState: Record<string, KeyboardStatus> = {};
+    
+    hostCheatingState.guesses.forEach((guess, guessIndex) => {
+      const evaluation = hostCheatingState.evaluations[guessIndex];
+      if (evaluation) {
+        guess.split('').forEach((letter, letterIndex) => {
+          const status = evaluation[letterIndex] as KeyboardStatus;
+          
+          if (!keyboardState[letter] || 
+              (status === 'correct') ||
+              (status === 'present' && keyboardState[letter] === 'absent')) {
+            keyboardState[letter] = status;
+          }
+        });
+      }
+    });
+    
+    return keyboardState;
+  };
+
   // Render different components based on mode
   if (mode === 'mode-select') {
     return <GameModeSelector onModeSelect={handleModeSelect} />;
@@ -445,6 +580,52 @@ function App(): JSX.Element {
         <div className="loading-message">
           Loading game...
         </div>
+      </div>
+    );
+  }
+
+  // Render host cheating mode
+  if (mode === 'host-cheating') {
+    return (
+      <div className="game-container">
+        <h1 className="game-title">WORDLE - Host Cheating</h1>
+        
+        <div className="host-cheating-info">
+          <div className="mode-indicator">🎭 Host Cheating Mode</div>
+          <CandidateInfo 
+            candidates={hostCheatingState.candidates} 
+            showDetails={hostCheatingState.gameStatus !== 'playing'}
+          />
+        </div>
+        
+        <div className="game-layout">
+          <div className="game-main">
+            <GameBoard 
+              guesses={hostCheatingState.guesses}
+              evaluations={hostCheatingState.evaluations}
+              currentGuess={hostCheatingState.currentGuess}
+              maxRounds={hostCheatingState.maxRounds}
+            />
+            
+            <GameStatusComponent 
+              status={hostCheatingState.gameStatus}
+              message={hostCheatingState.message}
+              answer={hostCheatingState.selectedAnswer || ''}
+              onNewGame={handleBackToModeSelect}
+              onRestartGame={restartHostCheatingGame}
+            />
+            
+            <Keyboard 
+              onKeyPress={handleKeyPress}
+              keyboardState={getHostCheatingKeyboardState()}
+              disabled={hostCheatingState.gameStatus !== 'playing'}
+            />
+          </div>
+        </div>
+
+        <button className="back-to-menu-btn" onClick={handleBackToModeSelect}>
+          Back to Menu
+        </button>
       </div>
     );
   }

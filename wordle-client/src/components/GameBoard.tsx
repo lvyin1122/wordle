@@ -25,26 +25,34 @@ const GameBoard: React.FC<GameBoardProps> = ({
         if (evaluations[rowIndex]) {
           const evaluation = evaluations[rowIndex][index];
           if (evaluation) {
-            // Check if the character has been eliminated
-            let isEliminated = false;
-            if (evaluation === 'present') {
-              isEliminated = !discoveredPresent.has(letter);
-            } else if (evaluation === 'correct') {
-              isEliminated = !discoveredCorrect.has(letter);
-            } else if (evaluation === 'absent') {
-              isEliminated = !discoveredAbsent.has(letter);
-            }
+            // Check if we should use elimination logic (for multiplayer mode)
+            const useEliminationLogic = discoveredPresent.size > 0 || discoveredCorrect.size > 0 || discoveredAbsent.size > 0;
             
-            // Only apply evaluation color if character hasn't been eliminated
-            if (!isEliminated) {
+            if (useEliminationLogic) {
+              // Check if the character has been eliminated
+              let isEliminated = false;
+              if (evaluation === 'present') {
+                isEliminated = !discoveredPresent.has(letter);
+              } else if (evaluation === 'correct') {
+                isEliminated = !discoveredCorrect.has(letter);
+              } else if (evaluation === 'absent') {
+                isEliminated = !discoveredAbsent.has(letter);
+              }
+              
+              // Only apply evaluation color if character hasn't been eliminated
+              if (!isEliminated) {
+                className += ` ${evaluation}`;
+              }
+            } else {
+              // For host cheating mode, just apply the evaluation color directly
               className += ` ${evaluation}`;
             }
           }
         }
         
-        // If no evaluation color was applied, check if character is in discovered sets
-        // BUT only apply present/absent colors, NOT correct colors (since correct requires specific position)
-        if (!className.includes('correct') && !className.includes('present') && !className.includes('absent')) {
+        // If no evaluation color was applied and we're using elimination logic, check discovered sets
+        const useEliminationLogic = discoveredPresent.size > 0 || discoveredCorrect.size > 0 || discoveredAbsent.size > 0;
+        if (useEliminationLogic && !className.includes('correct') && !className.includes('present') && !className.includes('absent')) {
           if (discoveredPresent.has(letter)) {
             className += ' present';
           } else if (discoveredCorrect.has(letter)) {
@@ -53,7 +61,6 @@ const GameBoard: React.FC<GameBoardProps> = ({
           } else if (discoveredAbsent.has(letter)) {
             className += ' absent';
           }
-          // Note: We don't apply 'correct' color here because it requires specific position
         }
       }
       // For the current input line (rowIndex === guesses.length), no special colors are applied

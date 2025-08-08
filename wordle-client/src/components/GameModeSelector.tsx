@@ -1,7 +1,8 @@
 import React from 'react';
+import { GameMode } from '../types';
 
 interface GameModeSelectorProps {
-  onModeSelect: (mode: 'single' | 'multiplayer') => void;
+  onModeSelect: (mode: GameMode) => void;
 }
 
 const GameModeSelector: React.FC<GameModeSelectorProps> = ({ onModeSelect }) => {
@@ -27,6 +28,15 @@ const GameModeSelector: React.FC<GameModeSelectorProps> = ({ onModeSelect }) => 
             <div className="mode-icon">👥</div>
             <div className="mode-title">Multiplayer</div>
             <div className="mode-description">Play against a friend</div>
+          </button>
+
+          <button 
+            className="mode-btn host-cheating"
+            onClick={() => onModeSelect('host-cheating')}
+          >
+            <div className="mode-icon">🎭</div>
+            <div className="mode-title">Host Cheating</div>
+            <div className="mode-description">The host adapts to your guesses</div>
           </button>
         </div>
       </div>

@@ -5,6 +5,9 @@ export type TileStatus = 'correct' | 'present' | 'absent';
 
 export type KeyboardStatus = 'correct' | 'present' | 'absent';
 
+// Game modes
+export type GameMode = 'single' | 'multiplayer' | 'host-cheating';
+
 // Attack types
 export type AttackType = 'punch' | 'bomb';
 
@@ -28,6 +31,21 @@ export interface AttackResult {
   eliminatedType?: 'present' | 'absent';
 }
 
+// Host cheating specific types
+export interface CandidateWord {
+  word: string;
+  score: number;
+  hits: number;
+  presents: number;
+}
+
+export interface GuessScore {
+  word: string;
+  score: number;
+  hits: number;
+  presents: number;
+}
+
 // Game configuration interface
 export interface GameConfig {
   MAX_ROUNDS: number;
@@ -44,6 +62,18 @@ export interface GameState {
   coins?: number;
   discoveredPresent?: Set<string>;
   discoveredCorrect?: Set<string>;
+}
+
+// Host cheating game state
+export interface HostCheatingGameState {
+  candidates: CandidateWord[];
+  guesses: string[];
+  evaluations: string[][];
+  currentGuess: string;
+  gameStatus: GameStatus;
+  message: string;
+  maxRounds: number;
+  selectedAnswer?: string;
 }
 
 // Component props interfaces

@@ -109,6 +109,15 @@ body {
   color: #666;
 }
 
+.mode-btn.host-cheating {
+  border-color: #6f42c1;
+}
+
+.mode-btn.host-cheating:hover {
+  border-color: #6f42c1;
+  box-shadow: 0 10px 20px rgba(111, 66, 193, 0.2);
+}
+
 /* Room manager */
 .room-manager {
   max-width: 500px;
@@ -607,6 +616,52 @@ body {
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* Host cheating mode */
+  .host-cheating-info {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  }
+
+  .mode-indicator {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+
+  .candidate-info {
+    text-align: left;
+  }
+
+  .candidate-count {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+
+  .candidate-details {
+    font-size: 0.9rem;
+    opacity: 0.9;
+  }
+
+  .candidate-word {
+    font-weight: bold;
+    color: #ffd700;
+    margin-bottom: 3px;
+  }
+
+  .candidate-score {
+    margin-bottom: 3px;
+  }
+
+  .candidate-examples {
+    font-style: italic;
+    opacity: 0.8;
   }
 
   /* Attack System */
