@@ -17,6 +17,7 @@ export interface GuessResult {
   evaluation: string[];
   gameStatus: string;
   answer?: string;
+  winner?: string;
 }
 
 export interface GameOverInfo {
@@ -27,6 +28,7 @@ export interface GameOverInfo {
     gameStatus: string;
     answer?: string;
   }>;
+  winner?: string;
 }
 
 export class SocketService {

@@ -139,6 +139,7 @@ class MultiplayerService {
     gameStatus: string;
     answer?: string;
     error?: string;
+    winner?: string;
   }> {
     const room = this.rooms.get(roomId);
     if (!room) {
@@ -148,6 +149,11 @@ class MultiplayerService {
     const player = room.players.find(p => p.id === playerId);
     if (!player || !player.gameState) {
       throw new Error('Player or game state not found');
+    }
+
+    // Check if game is already over
+    if (room.status === 'finished') {
+      throw new Error('Game is already finished');
     }
 
     // Validate the guess
@@ -162,17 +168,50 @@ class MultiplayerService {
     // Evaluate the guess
     const evaluation = evaluateGuess(guess, player.gameState.answer);
 
-    // Check if game is won or lost
+    // Check if this player won
     if (isGameWon(guess, player.gameState.answer)) {
       player.gameState.gameStatus = 'won';
-    } else if (isGameLost(player.gameState.guesses.length, GAME_CONFIG.MAX_ROUNDS)) {
-      player.gameState.gameStatus = 'lost';
+      room.status = 'finished';
+      
+      // Mark other players as lost
+      room.players.forEach(p => {
+        if (p.id !== playerId && p.gameState) {
+          p.gameState.gameStatus = 'lost';
+        }
+      });
+
+      return {
+        evaluation: evaluation.map(status => status),
+        gameStatus: 'won',
+        answer: player.gameState.answer,
+        winner: player.name
+      };
     }
 
+    // Check if this player lost (max rounds reached)
+    if (isGameLost(player.gameState.guesses.length, GAME_CONFIG.MAX_ROUNDS)) {
+      player.gameState.gameStatus = 'lost';
+      
+      // Check if all players have lost
+      const allPlayersLost = room.players.every(p => 
+        p.gameState && p.gameState.gameStatus === 'lost'
+      );
+      
+      if (allPlayersLost) {
+        room.status = 'finished';
+      }
+
+      return {
+        evaluation: evaluation.map(status => status),
+        gameStatus: 'lost',
+        answer: player.gameState.answer
+      };
+    }
+
+    // Game continues
     return {
-      evaluation: evaluation.map(status => status), // Convert TileStatus to string
-      gameStatus: player.gameState.gameStatus,
-      answer: player.gameState.gameStatus !== 'playing' ? player.gameState.answer : undefined
+      evaluation: evaluation.map(status => status),
+      gameStatus: 'playing'
     };
   }
 

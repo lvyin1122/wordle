@@ -145,6 +145,13 @@ function App(): JSX.Element {
       return;
     }
 
+    // Prevent guesses if game is already over
+    if (gameStatus !== 'playing') {
+      setMessage('Game is already over');
+      setTimeout(() => setMessage(''), 2000);
+      return;
+    }
+
     setIsValidating(true);
     setMessage('');
     
@@ -163,12 +170,27 @@ function App(): JSX.Element {
         setGameStatus(result.gameStatus as GameStatus);
         
         if (result.gameStatus === 'won') {
-          setMessage('Congratulations! You won!');
+          setMessage(`🎉 Congratulations! You won! The word was ${result.answer}`);
         } else if (result.gameStatus === 'lost') {
           setMessage(`Game over! The word was ${result.answer}`);
         }
         
         setIsValidating(false);
+      });
+
+      // Listen for game over events
+      socketService.onGameOver((data) => {
+        if (data.winner) {
+          const isWinner = data.players.find(p => p.id === playerId)?.gameStatus === 'won';
+          if (isWinner) {
+            setMessage(`🏆 You won! The word was ${data.players.find(p => p.id === playerId)?.answer}`);
+          } else {
+            setMessage(`😔 ${data.winner} won! The word was ${data.players.find(p => p.id === playerId)?.answer}`);
+          }
+        } else {
+          setMessage(`Game over! The word was ${data.players.find(p => p.id === playerId)?.answer}`);
+        }
+        setGameStatus('lost');
       });
 
       // Listen for errors
@@ -181,10 +203,11 @@ function App(): JSX.Element {
       // Cleanup on unmount
       return () => {
         socketService.off('guess-result');
+        socketService.off('game-over');
         socketService.off('error');
       };
     }
-  }, [mode, currentGuess]);
+  }, [mode, currentGuess, playerId]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {

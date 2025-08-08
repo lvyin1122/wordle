@@ -21,12 +21,6 @@ const GameStatusComponent: React.FC<GameStatusProps> = ({ status, message, answe
         </div>
       )}
       
-      {status === 'lost' && (
-        <div className="answer-display">
-          The word was: <strong>{answer}</strong>
-        </div>
-      )}
-      
       {(status === 'won' || status === 'lost') && (
         <button className="new-game-btn" onClick={onNewGame}>
           Play Again

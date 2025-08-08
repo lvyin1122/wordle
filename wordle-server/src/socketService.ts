@@ -129,7 +129,8 @@ export class SocketService {
       socket.emit('guess-result', {
         evaluation: result.evaluation,
         gameStatus: result.gameStatus,
-        answer: result.answer
+        answer: result.answer,
+        winner: result.winner
       });
 
       // If game is over, notify all players in the room
@@ -143,13 +144,15 @@ export class SocketService {
               name: player.name,
               gameStatus: player.gameState?.gameStatus,
               answer: player.gameState?.answer
-            }))
+            })),
+            winner: result.winner
           });
         }
       }
 
-      console.log(`Player ${playerId} submitted guess in room ${roomId}`);
+      console.log(`Player ${playerId} submitted guess in room ${roomId}, gameStatus: ${result.gameStatus}`);
     } catch (error) {
+      console.error('Error submitting multiplayer guess:', error);
       socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to submit guess' });
     }
   }
