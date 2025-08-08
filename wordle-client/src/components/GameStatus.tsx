@@ -6,12 +6,21 @@ interface GameStatusProps {
     message: string;
     answer: string;
     onNewGame: () => void;
+    onRestartGame?: () => void;
   }
 
-const GameStatusComponent: React.FC<GameStatusProps> = ({ status, message, answer, onNewGame }) => {
+const GameStatusComponent: React.FC<GameStatusProps> = ({ status, message, answer, onNewGame, onRestartGame }) => {
   if (status === 'playing' && !message) {
     return null;
   }
+
+  const handlePlayAgain = () => {
+    if (onRestartGame) {
+      onRestartGame();
+    } else {
+      onNewGame();
+    }
+  };
 
   return (
     <div className="game-status-container">
@@ -22,7 +31,7 @@ const GameStatusComponent: React.FC<GameStatusProps> = ({ status, message, answe
       )}
       
       {(status === 'won' || status === 'lost') && (
-        <button className="new-game-btn" onClick={onNewGame}>
+        <button className="new-game-btn" onClick={handlePlayAgain}>
           Play Again
         </button>
       )}

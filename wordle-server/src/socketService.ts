@@ -47,6 +47,11 @@ export class SocketService {
         this.handleSubmitAttack(socket, data);
       });
 
+      // Restart game
+      socket.on('restart-game', (data: { roomId: string; playerId: string }) => {
+        this.handleRestartGame(socket, data);
+      });
+
       // Leave room
       socket.on('leave-room', (data: { roomId: string; playerId: string }) => {
         this.handleLeaveRoom(socket, data);
@@ -252,6 +257,18 @@ export class SocketService {
     } catch (error) {
       console.error('Attack error:', error);
       socket.emit('error', { message: error instanceof Error ? error.message : 'Attack failed' });
+    }
+  }
+
+  private handleRestartGame(socket: any, data: { roomId: string; playerId: string }): void {
+    const { roomId, playerId } = data;
+    try {
+      multiplayerService.restartGame(roomId);
+      this.io.to(roomId).emit('game-restarted', { roomId });
+      console.log(`Game restarted for room ${roomId} by player ${playerId}`);
+    } catch (error) {
+      console.error('Error restarting game:', error);
+      socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to restart game' });
     }
   }
 

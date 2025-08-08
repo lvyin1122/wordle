@@ -285,7 +285,7 @@ class MultiplayerService {
   submitAttack(roomId: string, attackerId: string, targetId: string, attackType: 'punch' | 'bomb'): {
     success: boolean;
     eliminatedCharacter?: string;
-    eliminatedType?: 'present' | 'correct' | 'absent';
+    eliminatedType?: 'present' | 'absent';
     error?: string;
   } {
     const room = this.rooms.get(roomId);
@@ -338,6 +338,37 @@ class MultiplayerService {
     }
 
     return attackResult;
+  }
+
+  restartGame(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      throw new Error('Room not found');
+    }
+
+    // Generate new word and reset game state
+    const answer = getRandomWord();
+    
+    const gameState: GameState = {
+      id: this.generateGameId(),
+      answer,
+      guesses: [],
+      gameStatus: 'playing',
+      maxRounds: GAME_CONFIG.MAX_ROUNDS,
+      createdAt: new Date()
+    };
+
+    // Reset all players' game state
+    room.players.forEach(player => {
+      player.gameState = gameState;
+      player.coins = 0;
+      player.discoveredPresent = new Set();
+      player.discoveredCorrect = new Set();
+      player.discoveredAbsent = new Set();
+    });
+
+    room.gameState = gameState;
+    room.status = 'playing';
   }
 
   private generatePlayerId(): string {

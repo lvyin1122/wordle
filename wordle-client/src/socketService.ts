@@ -126,6 +126,16 @@ export class SocketService {
     this.socket.emit('submit-attack', { roomId, attackerId, targetId, attackType });
   }
 
+  // Restart multiplayer game
+  public restartGame(roomId: string, playerId: string): void {
+    if (!this.socket || !this.isConnected) {
+      console.error('Socket not connected');
+      return;
+    }
+
+    this.socket.emit('restart-game', { roomId, playerId });
+  }
+
   // Leave a room
   public leaveRoom(roomId: string, playerId: string): void {
     if (!this.socket || !this.isConnected) {
@@ -176,6 +186,12 @@ export class SocketService {
   public onAttackResult(callback: (result: AttackResult) => void): void {
     if (!this.socket) return;
     this.socket.on('attack-result', callback);
+  }
+
+  // Listen for game restart
+  public onGameRestarted(callback: () => void): void {
+    if (!this.socket) return;
+    this.socket.on('game-restarted', callback);
   }
 
   // Remove event listeners

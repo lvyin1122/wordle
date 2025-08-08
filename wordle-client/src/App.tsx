@@ -198,6 +198,22 @@ function App(): JSX.Element {
     socketService.submitAttack(roomId, playerId, targetId, attackType);
   };
 
+  const restartMultiplayerGame = (): void => {
+    // Reset game state but keep room connection
+    setGuesses([]);
+    setEvaluations([]);
+    setCurrentGuess('');
+    setGameStatus('playing');
+    setMessage('');
+    setCoins(0);
+    setDiscoveredPresent(new Set());
+    setDiscoveredCorrect(new Set());
+    setDiscoveredAbsent(new Set());
+    
+    // Request new game from server
+    socketService.restartGame(roomId, playerId);
+  };
+
   // Socket event listeners for multiplayer
   useEffect(() => {
     if (mode === 'multiplayer-game') {
@@ -319,6 +335,12 @@ function App(): JSX.Element {
           }
         }
         setTimeout(() => setMessage(''), 3000);
+      });
+
+      // Listen for game restart
+      socketService.onGameRestarted(() => {
+        setMessage('🎮 New game started!');
+        setTimeout(() => setMessage(''), 2000);
       });
 
       // Cleanup on unmount
@@ -457,6 +479,7 @@ function App(): JSX.Element {
             message={message}
             answer=""
             onNewGame={mode === 'single-player' ? initializeSinglePlayer : handleBackToModeSelect}
+            onRestartGame={mode === 'multiplayer-game' ? restartMultiplayerGame : undefined}
           />
           
           {isValidating && (
