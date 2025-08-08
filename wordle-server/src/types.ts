@@ -8,6 +8,9 @@ export type GameMode = 'single' | 'multiplayer';
 
 export type RoomStatus = 'waiting' | 'ready' | 'playing' | 'finished';
 
+// Attack types
+export type AttackType = 'punch' | 'bomb';
+
 export interface GameState {
   id: string;
   answer: string;
@@ -15,6 +18,10 @@ export interface GameState {
   gameStatus: GameStatus;
   maxRounds: number;
   createdAt: Date;
+  coins?: number;
+  discoveredPresent?: Set<string>;
+  discoveredCorrect?: Set<string>;
+  discoveredAbsent?: Set<string>;
 }
 
 export interface MultiplayerRoom {
@@ -32,6 +39,20 @@ export interface Player {
   isReady: boolean;
   isHost: boolean;
   gameState?: GameState;
+  coins?: number;
+  discoveredPresent?: Set<string>;
+  discoveredCorrect?: Set<string>;
+  discoveredAbsent?: Set<string>;
+}
+
+// Attack result
+export interface AttackResult {
+  attackerId: string;
+  targetId: string;
+  attackType: AttackType;
+  success: boolean;
+  eliminatedCharacter?: string;
+  eliminatedType?: 'present' | 'absent';
 }
 
 export interface StartGameResponse {
@@ -48,6 +69,9 @@ export interface GuessResponse {
   gameStatus: GameStatus;
   answer?: string;
   error?: string;
+  coinsEarned?: number;
+  newPresent?: string[];
+  newCorrect?: string[];
 }
 
 export interface GameStatusResponse {
@@ -79,6 +103,13 @@ export interface RoomResponse {
 export interface PlayerReadyRequest {
   playerId: string;
   isReady: boolean;
+}
+
+// Attack request
+export interface AttackRequest {
+  attackerId: string;
+  targetId: string;
+  attackType: AttackType;
 }
 
 export interface GameConfig {

@@ -1,6 +1,6 @@
 import { MultiplayerRoom, Player, RoomStatus, GameState, CreateRoomRequest, JoinRoomRequest, PlayerReadyRequest } from './types';
 import { getRandomWord, GAME_CONFIG } from './config';
-import { evaluateGuess, isGameWon, isGameLost } from './gameLogic';
+import { evaluateGuess, isGameWon, isGameLost, executeAttack } from './gameLogic';
 import { validateWord } from './wordValidation';
 
 class MultiplayerService {
@@ -16,7 +16,11 @@ class MultiplayerService {
       id: this.generatePlayerId(),
       name: playerName,
       isReady: false,
-      isHost: true
+      isHost: true,
+      coins: 0,
+      discoveredPresent: new Set(),
+      discoveredCorrect: new Set(),
+      discoveredAbsent: new Set()
     };
 
     const room: MultiplayerRoom = {
@@ -51,7 +55,11 @@ class MultiplayerService {
       id: this.generatePlayerId(),
       name: playerName,
       isReady: false,
-      isHost: false
+      isHost: false,
+      coins: 0,
+      discoveredPresent: new Set(),
+      discoveredCorrect: new Set(),
+      discoveredAbsent: new Set()
     };
 
     room.players.push(player);
@@ -140,6 +148,10 @@ class MultiplayerService {
     answer?: string;
     error?: string;
     winner?: string;
+    coinsEarned?: number;
+    newPresent?: string[];
+    newCorrect?: string[];
+    newAbsent?: string[];
   }> {
     const room = this.rooms.get(roomId);
     if (!room) {
@@ -165,8 +177,34 @@ class MultiplayerService {
     // Add guess to player's game state
     player.gameState.guesses.push(guess);
 
-    // Evaluate the guess
-    const evaluation = evaluateGuess(guess, player.gameState.answer);
+    // Initialize coin tracking if not exists
+    if (player.coins === undefined) {
+      player.coins = 0;
+    }
+    if (player.discoveredPresent === undefined) {
+      player.discoveredPresent = new Set();
+    }
+    if (player.discoveredCorrect === undefined) {
+      player.discoveredCorrect = new Set();
+    }
+    if (player.discoveredAbsent === undefined) {
+      player.discoveredAbsent = new Set();
+    }
+
+    // Evaluate the guess with coin tracking
+    const { evaluation, coinResult } = evaluateGuess(
+      guess, 
+      player.gameState.answer, 
+      player.discoveredPresent, 
+      player.discoveredCorrect,
+      player.discoveredAbsent
+    );
+
+    // Update player's discovered characters and coins
+    coinResult.newPresent.forEach(char => player.discoveredPresent!.add(char));
+    coinResult.newCorrect.forEach(char => player.discoveredCorrect!.add(char));
+    coinResult.newAbsent.forEach(char => player.discoveredAbsent!.add(char));
+    player.coins += coinResult.coinsEarned;
 
     // Check if this player won
     if (isGameWon(guess, player.gameState.answer)) {
@@ -184,7 +222,11 @@ class MultiplayerService {
         evaluation: evaluation.map(status => status),
         gameStatus: 'won',
         answer: player.gameState.answer,
-        winner: player.name
+        winner: player.name,
+        coinsEarned: coinResult.coinsEarned,
+        newPresent: coinResult.newPresent,
+        newCorrect: coinResult.newCorrect,
+        newAbsent: coinResult.newAbsent
       };
     }
 
@@ -204,14 +246,22 @@ class MultiplayerService {
       return {
         evaluation: evaluation.map(status => status),
         gameStatus: 'lost',
-        answer: player.gameState.answer
+        answer: player.gameState.answer,
+        coinsEarned: coinResult.coinsEarned,
+        newPresent: coinResult.newPresent,
+        newCorrect: coinResult.newCorrect,
+        newAbsent: coinResult.newAbsent
       };
     }
 
     // Game continues
     return {
       evaluation: evaluation.map(status => status),
-      gameStatus: 'playing'
+      gameStatus: 'playing',
+      coinsEarned: coinResult.coinsEarned,
+      newPresent: coinResult.newPresent,
+      newCorrect: coinResult.newCorrect,
+      newAbsent: coinResult.newAbsent
     };
   }
 
@@ -230,6 +280,64 @@ class MultiplayerService {
       room.status = 'waiting';
       room.players[0].isHost = true;
     }
+  }
+
+  submitAttack(roomId: string, attackerId: string, targetId: string, attackType: 'punch' | 'bomb'): {
+    success: boolean;
+    eliminatedCharacter?: string;
+    eliminatedType?: 'present' | 'correct' | 'absent';
+    error?: string;
+  } {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      throw new Error('Room not found');
+    }
+
+    const attacker = room.players.find(p => p.id === attackerId);
+    const target = room.players.find(p => p.id === targetId);
+
+    if (!attacker || !target) {
+      throw new Error('Player not found');
+    }
+
+    // Check if game is in progress
+    if (room.status !== 'playing') {
+      throw new Error('Game is not in progress');
+    }
+
+    // Check if attacker has enough coins
+    const cost = attackType === 'punch' ? 1 : 2;
+    if (!attacker.coins || attacker.coins < cost) {
+      throw new Error('Not enough coins for attack');
+    }
+
+    // Initialize target's discovered sets if not exists
+    if (target.discoveredPresent === undefined) {
+      target.discoveredPresent = new Set();
+    }
+    if (target.discoveredCorrect === undefined) {
+      target.discoveredCorrect = new Set();
+    }
+    if (target.discoveredAbsent === undefined) {
+      target.discoveredAbsent = new Set();
+    }
+
+    // Execute the attack
+    const attackResult = executeAttack(attackType, target.discoveredPresent, target.discoveredCorrect, target.discoveredAbsent);
+
+    if (attackResult.success) {
+      // Deduct coins from attacker
+      attacker.coins -= cost;
+
+      // Remove the eliminated character from target
+      if (attackResult.eliminatedType === 'present') {
+        target.discoveredPresent!.delete(attackResult.eliminatedCharacter!);
+      } else if (attackResult.eliminatedType === 'absent') {
+        target.discoveredAbsent!.delete(attackResult.eliminatedCharacter!);
+      }
+    }
+
+    return attackResult;
   }
 
   private generatePlayerId(): string {

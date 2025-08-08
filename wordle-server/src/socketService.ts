@@ -42,6 +42,11 @@ export class SocketService {
         await this.handleSubmitGuess(socket, data);
       });
 
+      // Submit attack
+      socket.on('submit-attack', (data: { roomId: string; attackerId: string; targetId: string; attackType: 'punch' | 'bomb' }) => {
+        this.handleSubmitAttack(socket, data);
+      });
+
       // Leave room
       socket.on('leave-room', (data: { roomId: string; playerId: string }) => {
         this.handleLeaveRoom(socket, data);
@@ -52,6 +57,19 @@ export class SocketService {
         this.handleDisconnect(socket);
       });
     });
+  }
+
+  private serializePlayerData(player: any) {
+    return {
+      id: player.id,
+      name: player.name,
+      isReady: player.isReady,
+      isHost: player.isHost,
+      coins: player.coins || 0,
+      discoveredPresent: player.discoveredPresent ? Array.from(player.discoveredPresent) : [],
+      discoveredCorrect: player.discoveredCorrect ? Array.from(player.discoveredCorrect) : [],
+      discoveredAbsent: player.discoveredAbsent ? Array.from(player.discoveredAbsent) : []
+    };
   }
 
   private handleJoinRoom(socket: any, data: { roomId: string; playerId: string; playerName: string }): void {
@@ -71,7 +89,7 @@ export class SocketService {
       this.io.to(roomId).emit('room-updated', {
         roomId: room.roomId,
         status: room.status,
-        players: room.players,
+        players: room.players.map(player => this.serializePlayerData(player)),
         gameId: room.gameState?.id,
         maxRounds: room.gameState?.maxRounds
       });
@@ -98,7 +116,7 @@ export class SocketService {
       this.io.to(roomId).emit('room-updated', {
         roomId: room.roomId,
         status: room.status,
-        players: room.players,
+        players: room.players.map(player => this.serializePlayerData(player)),
         gameId: room.gameState?.id,
         maxRounds: room.gameState?.maxRounds
       });
@@ -130,29 +148,47 @@ export class SocketService {
         evaluation: result.evaluation,
         gameStatus: result.gameStatus,
         answer: result.answer,
-        winner: result.winner
+        winner: result.winner,
+        coinsEarned: result.coinsEarned,
+        newPresent: result.newPresent,
+        newCorrect: result.newCorrect,
+        newAbsent: result.newAbsent
       });
+
+      // Emit updated room state to all players to reflect coin changes
+      const room = multiplayerService.getRoom(roomId);
+      if (room) {
+        this.io.to(roomId).emit('room-updated', {
+          roomId: room.roomId,
+          status: room.status,
+          players: room.players.map(player => this.serializePlayerData(player)),
+          gameId: room.gameState?.id,
+          maxRounds: room.gameState?.maxRounds
+        });
+      }
 
       // If game is over, notify all players in the room
       if (result.gameStatus !== 'playing') {
-        const room = multiplayerService.getRoom(roomId);
         if (room) {
           this.io.to(roomId).emit('game-over', {
             roomId: room.roomId,
             players: room.players.map(player => ({
               id: player.id,
               name: player.name,
-              gameStatus: player.gameState?.gameStatus,
-              answer: player.gameState?.answer
+              gameStatus: player.gameState?.gameStatus || 'playing',
+              answer: player.gameState?.answer,
+              coins: player.coins,
+              discoveredPresent: player.discoveredPresent ? Array.from(player.discoveredPresent) : [],
+              discoveredCorrect: player.discoveredCorrect ? Array.from(player.discoveredCorrect) : []
             })),
             winner: result.winner
           });
         }
       }
 
-      console.log(`Player ${playerId} submitted guess in room ${roomId}, gameStatus: ${result.gameStatus}`);
+      console.log(`Guess submitted: ${guess} by player ${playerId} in room ${roomId}`);
     } catch (error) {
-      console.error('Error submitting multiplayer guess:', error);
+      console.error('Error submitting guess:', error);
       socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to submit guess' });
     }
   }
@@ -160,35 +196,62 @@ export class SocketService {
   private handleLeaveRoom(socket: any, data: { roomId: string; playerId: string }): void {
     const { roomId, playerId } = data;
     
-    try {
-      multiplayerService.leaveRoom(roomId, playerId);
-      
-      // Leave the socket room
-      socket.leave(roomId);
-      
-      // Clear socket data
-      socket.data.roomId = undefined;
-      socket.data.playerId = undefined;
-      socket.data.playerName = undefined;
+    // Leave the socket room
+    socket.leave(roomId);
+    
+    // Remove player from the room
+    multiplayerService.leaveRoom(roomId, playerId);
+    
+    // Get updated room state and emit to remaining players
+    const room = multiplayerService.getRoom(roomId);
+    if (room) {
+      this.io.to(roomId).emit('room-updated', {
+        roomId: room.roomId,
+        status: room.status,
+        players: room.players.map(player => this.serializePlayerData(player)),
+        gameId: room.gameState?.id,
+        maxRounds: room.gameState?.maxRounds
+      });
+    } else {
+      // Room was deleted, notify remaining players
+      this.io.to(roomId).emit('room-deleted', { roomId });
+    }
 
-      // Get updated room state and emit to remaining players
+    console.log(`Player ${playerId} left room ${roomId}`);
+  }
+
+  private handleSubmitAttack(socket: any, data: { roomId: string; attackerId: string; targetId: string; attackType: 'punch' | 'bomb' }): void {
+    const { roomId, attackerId, targetId, attackType } = data;
+    
+    try {
+      const attackResult = multiplayerService.submitAttack(roomId, attackerId, targetId, attackType);
+      
+      // Emit attack result to all players in the room
+      this.io.to(roomId).emit('attack-result', {
+        attackerId,
+        targetId,
+        attackType,
+        success: attackResult.success,
+        eliminatedCharacter: attackResult.eliminatedCharacter,
+        eliminatedType: attackResult.eliminatedType
+      });
+
+      // Also emit updated room state to reflect coin changes
       const room = multiplayerService.getRoom(roomId);
       if (room) {
         this.io.to(roomId).emit('room-updated', {
           roomId: room.roomId,
           status: room.status,
-          players: room.players,
+          players: room.players.map(player => this.serializePlayerData(player)),
           gameId: room.gameState?.id,
           maxRounds: room.gameState?.maxRounds
         });
-      } else {
-        // Room was deleted, notify remaining players
-        this.io.to(roomId).emit('room-deleted', { roomId });
       }
 
-      console.log(`Player ${playerId} left room ${roomId}`);
+      console.log(`Attack executed: ${attackerId} -> ${targetId} (${attackType})`);
     } catch (error) {
-      socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to leave room' });
+      console.error('Attack error:', error);
+      socket.emit('error', { message: error instanceof Error ? error.message : 'Attack failed' });
     }
   }
 

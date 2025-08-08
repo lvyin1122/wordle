@@ -8,6 +8,10 @@ export interface RoomInfo {
     name: string;
     isReady: boolean;
     isHost: boolean;
+    coins?: number;
+    discoveredPresent?: string[];
+    discoveredCorrect?: string[];
+    discoveredAbsent?: string[];
   }>;
   gameId?: string;
   maxRounds?: number;
@@ -18,6 +22,10 @@ export interface GuessResult {
   gameStatus: string;
   answer?: string;
   winner?: string;
+  coinsEarned?: number;
+  newPresent?: string[];
+  newCorrect?: string[];
+  newAbsent?: string[];
 }
 
 export interface GameOverInfo {
@@ -27,8 +35,20 @@ export interface GameOverInfo {
     name: string;
     gameStatus: string;
     answer?: string;
+    coins?: number;
+    discoveredPresent?: string[];
+    discoveredCorrect?: string[];
   }>;
   winner?: string;
+}
+
+export interface AttackResult {
+  attackerId: string;
+  targetId: string;
+  attackType: 'punch' | 'bomb';
+  success: boolean;
+  eliminatedCharacter?: string;
+  eliminatedType?: 'present' | 'absent';
 }
 
 export class SocketService {
@@ -96,6 +116,16 @@ export class SocketService {
     this.socket.emit('submit-guess', { roomId, playerId, guess });
   }
 
+  // Submit an attack
+  public submitAttack(roomId: string, attackerId: string, targetId: string, attackType: 'punch' | 'bomb'): void {
+    if (!this.socket || !this.isConnected) {
+      console.error('Socket not connected');
+      return;
+    }
+
+    this.socket.emit('submit-attack', { roomId, attackerId, targetId, attackType });
+  }
+
   // Leave a room
   public leaveRoom(roomId: string, playerId: string): void {
     if (!this.socket || !this.isConnected) {
@@ -140,6 +170,12 @@ export class SocketService {
   public onError(callback: (error: { message: string }) => void): void {
     if (!this.socket) return;
     this.socket.on('error', callback);
+  }
+
+  // Listen for attack results
+  public onAttackResult(callback: (result: AttackResult) => void): void {
+    if (!this.socket) return;
+    this.socket.on('attack-result', callback);
   }
 
   // Remove event listeners

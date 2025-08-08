@@ -65,7 +65,7 @@ class GameService {
       };
     }
     
-    const evaluation = evaluateGuess(normalizedGuess, game.answer);
+    const { evaluation } = evaluateGuess(normalizedGuess, game.answer);
     game.guesses.push(normalizedGuess);
     
     if (isGameWon(normalizedGuess, game.answer)) {
